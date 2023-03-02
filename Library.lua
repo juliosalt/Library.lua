@@ -107,7 +107,7 @@ do
             frame.Thickness = 0
             frame.Color = Color3.fromRGB(255,255,255)
             frame.Size = Vector2.new(100,100)
-            frame.Position = Vector2.new(0,0)
+            frame.Position = Vector2.new(0,0) 
             frame.ZIndex = 50
             frame.Transparency = library.shared.initialized and 1 or 0
             instance = frame
