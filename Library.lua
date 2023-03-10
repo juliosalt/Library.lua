@@ -1,27 +1,27 @@
---[[ Credits
-    Matas#3535 @matas - Created UI
-    bored#9316 @wally hub user - Helped make library
-]]
+
+
+
 -- // Variables
 local ws = game:GetService("Workspace")
 local uis = game:GetService("UserInputService")
 local rs = game:GetService("RunService")
 local hs = game:GetService("HttpService")
+local ts = game:GetService("TweenService")
 local plrs = game:GetService("Players")
 local stats = game:GetService("Stats")
+local mservice = game:GetService("MarketplaceService")
 -- UI Variables
 local library = {
     drawings = {},
     hidden = {},
     connections = {},
+    accents = {},
     pointers = {},
     began = {},
     ended = {},
     changed = {},
     folders = {
-        main = "splix",
-        assets = "splix/assets",
-        configs = "splix/configs"
+        assets = "devine/assets",
     },
     shared = {
         initialized = false,
@@ -29,36 +29,25 @@ local library = {
         ping = 0
     }
 }
---
-if not isfolder(library.folders.main) then
-    makefolder(library.folders.main)
-end
---
-if not isfolder(library.folders.assets) then
-    makefolder(library.folders.assets)
-end
---
-if not isfolder(library.folders.configs) then
-    makefolder(library.folders.configs)
-end
---
+
 local utility = {}
 local pages = {}
 local sections = {}
 -- Theme Variables
 --local themes = {}
 local theme = {
-accent = Color3.fromRGB(167, 217, 77),
-light_contrast = Color3.fromRGB(23, 23, 23),
-dark_contrast = Color3.fromRGB(12, 12, 12),
-outline = Color3.fromRGB(0, 0, 0),
-inline = Color3.fromRGB(78, 81, 88),
-textcolor = Color3.fromRGB(255, 255, 255),
-textborder = Color3.fromRGB(0, 0, 0),
-cursoroutline = Color3.fromRGB(10, 10, 10),
-font = 2,
-textsize = 13
+    accent = Color3.fromRGB(100,149,237),
+    light_contrast = Color3.fromRGB(20, 20, 20),
+    dark_contrast = Color3.fromRGB(20, 20, 20),
+    outline = Color3.fromRGB(0, 0, 0),
+    inline = Color3.fromRGB(30, 30, 30),
+    textcolor = Color3.fromRGB(255, 255, 255),
+    textborder = Color3.fromRGB(0, 0, 0),
+    cursoroutline = Color3.fromRGB(10, 10, 10),
+    font = 2,
+    textsize = 13
 }
+
 -- // Utility Functions
 do
     function utility:Size(xScale,xOffset,yScale,yOffset,instance)
@@ -75,6 +64,29 @@ do
             --
             return Vector2.new(x,y)
         end
+    end
+    --
+    function utility:MathPercent(max, value)
+        return math.round((100 / max) * value)
+    end
+    --
+    function utility:ProtectInstance(ins)
+        local oldNamecall
+
+        oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
+            local args = {...}
+            local method = getnamecallmethod()
+
+            if not checkcaller() then
+				if ins ~= nil and typeof(ins) == "Instance" and ins.Parent ~= nil then
+					if method == "FindFirstChild" and args[1] == ins.Name then
+						return nil
+					end
+				end
+			end
+
+            return oldNamecall(self, unpack(args))
+        end))
     end
     --
     function utility:Position(xScale,xOffset,yScale,yOffset,instance)
@@ -107,7 +119,7 @@ do
             frame.Thickness = 0
             frame.Color = Color3.fromRGB(255,255,255)
             frame.Size = Vector2.new(100,100)
-            frame.Position = Vector2.new(0,0) 
+            frame.Position = Vector2.new(0,0)
             frame.ZIndex = 50
             frame.Transparency = library.shared.initialized and 1 or 0
             instance = frame
@@ -185,14 +197,6 @@ do
                         end
                     end
                 end
-                --[[if typeof(v) == "Color3" then
-                    local found_theme = utility:Find(theme, v)
-                    if found_theme then
-                        themes[found_theme] = themes[found_theme] or {}
-                        themes[found_theme][i] = themes[found_theme][i]
-                        table.insert(themes[found_theme][i], instance)
-                    end
-                end]]
             end
             --
             if not instanceHidden then
@@ -289,6 +293,12 @@ do
 	    return (mouseLocation.x >= values[1] and mouseLocation.x <= (values[1] + (values[3] - values[1]))) and (mouseLocation.y >= values[2] and mouseLocation.y <= (values[2] + (values[4] - values[2])))
     end
     --
+    function utility:MouseOverDrawingInstance(object)
+        local values = {object.Position, object.Position + object.Size}
+        local mouseLocation = utility:MouseLocation()
+        return mouseLocation.X >= values[1].X and mouseLocation.Y >= values[1].Y and mouseLocation.X <= values[2].X and mouseLocation.Y <= values[2].Y
+    end
+    --
     function utility:GetTextBounds(text, textSize, font)
         local textbounds = Vector2.new(0, 0)
         --
@@ -360,6 +370,15 @@ do
         for z,x in pairs(table2) do table3[z + t] = x end
         return table3
     end
+    --
+    function utility:ShiftKey(key)
+        if string.byte(key) >= 65 and string.byte(key) <= 122 then
+            return key:upper()
+        else
+            local shiftKeybinds = {["-"] = "_", ["="] = "+", ["1"] = "!", ["2"] = "@", ["3"] = "#", ["4"] = "$", ["5"] = "%", ["6"] = "^", ["7"] = "&", ["8"] = "*", ["9"] = "(", ["0"] = ")", [";"] = ":", ["\'"] = "\"", ["\\"] = "|", ["/"] = "?"}
+            return shiftKeybinds[key] or key
+        end
+    end
 end
 -- // Library Functions
 do
@@ -369,13 +388,14 @@ do
     --
     function library:New(info)
 		local info = info or {}
-        local name = info.name or info.Name or info.title or info.Title or "UI Title"
+        local name = info.name or info.Name or "devine"
+        local title = info.title or info.Title or "devine"
         local size = info.size or info.Size or Vector2.new(504,604)
         local accent = info.accent or info.Accent or info.color or info.Color or theme.accent
         --
         theme.accent = accent
         --
-        local window = {pages = {}, isVisible = false, uibind = Enum.KeyCode.Z, currentPage = nil, fading = false, dragging = false, drag = Vector2.new(0,0), currentContent = {frame = nil, dropdown = nil, multibox = nil, colorpicker = nil, keybind = nil}}
+        local window = {pages = {}, name = name, title = title, isVisible = false, uibind = Enum.KeyCode.RightControl, currentPage = nil, fading = false, dragging = false, drag = Vector2.new(0,0), currentContent = {frame = nil, dropdown = nil, multibox = nil, colorpicker = nil, keybind = nil, textbox = nil}}
         --
         local main_frame = utility:Create("Frame", {Vector2.new(0,0)}, {
             Size = utility:Size(0, size.X, 0, size.Y),
@@ -388,6 +408,7 @@ do
             Position = utility:Position(0, 1, 0, 1, main_frame),
             Color = theme.accent
         })
+        library.accents[#library.accents + 1] = frame_inline
         --
         local inner_frame = utility:Create("Frame", {Vector2.new(1,1), frame_inline}, {
             Size = utility:Size(1, -2, 1, -2, frame_inline),
@@ -396,7 +417,7 @@ do
         })
         --
         local title = utility:Create("TextLabel", {Vector2.new(4,2), inner_frame}, {
-            Text = name,
+            Text = window.title,
             Size = theme.textsize,
             Font = theme.font,
             Color = theme.textcolor,
@@ -446,13 +467,75 @@ do
             for i,v in pairs(library.pointers) do
                 if typeof(v:Get()) == "table" and v:Get().Transparency then
                     local hue, sat, val = v:Get().Color:ToHSV()
-                    config[i] = {Color = {hue, sat, val}, Transparency = v:Get().Transparency}
+                    config[i] = {Color = {hue, sat, val}, Transparency = 0}
                 else
                     config[i] = v:Get()
                 end
             end
             --
             return game:GetService("HttpService"):JSONEncode(config)
+        end
+        --
+        function window:Rename(newName)
+            window.name = newName
+        end
+        --
+        function window:Retitle(newTitle)
+            window.title = newTitle
+            title.Text = window.title
+        end
+        --
+        function window:GetTab(name)
+            for _, v in pairs(window.pages) do
+                if v.name == name then
+                    return v
+                end
+            end
+        end
+        --
+        function window:GetVector()
+            return main_frame.Position
+        end
+        --
+        function window:ChangeAccent(color)
+            theme.accent = color
+            for _, v in next, library.accents do
+                if v.Color ~= theme.light_contrast then
+                    v.Color = color
+                end
+            end
+        end
+        --
+        function window:ChangeTheme(newTheme)
+            local toChange = {}
+            for i, v in pairs(library.drawings) do
+                for i2, v2 in pairs(theme) do
+                    pcall(function()
+                        if v[1].Color == v2 then
+                            table.insert(toChange, {i2, v[1]})
+                        end
+                    end)
+                end
+            end
+            for i, v in pairs(library.hidden) do
+                for i2, v2 in pairs(theme) do
+                    pcall(function()
+                        if v[1].Color == v2 then
+                            table.insert(toChange, {i2, v[1]})
+                        end
+                    end)
+                end
+            end
+            for i, v in pairs(toChange) do
+                if newTheme[v[1]] then
+                    v[2].Color = newTheme[v[1]]
+                end
+            end
+            for i, v in pairs(newTheme) do
+                if theme[i] then
+                    theme[i] = v
+                end
+            end
         end
         --
         function window:LoadConfig(config)
@@ -468,9 +551,9 @@ do
         function window:Move(vector)
             for i,v in pairs(library.drawings) do
                 if v[2][2] then
-                    v[1].Position = utility:Position(0, v[2][1].X, 0, v[2][1].Y, v[2][2])
+                    pcall(function() v[1].Position = utility:Position(0, v[2][1].X, 0, v[2][1].Y, v[2][2]) end)
                 else
-                    v[1].Position = utility:Position(0, vector.X, 0, vector.Y)
+                    pcall(function() v[1].Position = utility:Position(0, vector.X, 0, vector.Y) end)
                 end
             end
         end
@@ -532,6 +615,9 @@ do
                 --
                 window.currentContent.frame = nil
                 window.currentContent.keybind = nil
+            elseif window.currentContent.textbox and window.currentContent.textbox.focused then
+                window.currentContent.textbox.focused = false
+                window.currentContent.textbox = nil
             end
         end
         --
@@ -548,44 +634,41 @@ do
         function window:Unload()
             for i,v in pairs(library.connections) do
                 v:Disconnect()
-                v = nil
             end
             --
             for i,v in next, library.hidden do
                 coroutine.wrap(function()
-                    if v[1] and v[1].Remove and v[1].__OBJECT_EXISTS then
+                    if v[1] then
                         local instance = v[1]
-                        v[1] = nil
-                        v = nil
                         --
                         instance:Remove()
+                        library.hidden[i] = nil
                     end
                 end)()
             end
             --
             for i,v in pairs(library.drawings) do
                 coroutine.wrap(function()
-                    if v[1].__OBJECT_EXISTS then
+                    if v[1] ~= nil then
                         local instance = v[1]
-                        v[2] = nil
-                        v[1] = nil
-                        v = nil
                         --
                         instance:Remove()
+                        --
+                        library.drawings[i] = nil
                     end
                 end)()
             end
             --
             for i,v in pairs(library.began) do
-                v = nil
+                v:Disconnect()
             end
             --
             for i,v in pairs(library.ended) do
-                v = nil
+                v:Disconnect()
             end
             --
             for i,v in pairs(library.changed) do
-                v = nil
+                v:Disconnect()
             end
             --
             library.drawings = nil
@@ -602,7 +685,6 @@ do
             window.watermark = {visible = false}
             --
             local info = info or {}
-            local watermark_name = info.name or info.Name or info.title or info.Title or string.format("$$ Splix || uid : %u || ping : %u || fps : %u", 1, 100, 200)
             --
             local text_bounds = utility:GetTextBounds(watermark_name, theme.textsize, theme.font)
             --
@@ -610,16 +692,16 @@ do
                 Size = utility:Size(0, text_bounds.X+20, 0, 21),
                 Position = utility:Position(0, 100, 0, 38/2-10),
                 Hidden = true,
-                ZIndex = 60,
+                ZIndex = 58,
                 Color = theme.outline,
-                Visible = window.watermark.visible
+                Visible = window.watermark.visible,
             })window.watermark.outline = watermark_outline
             --
             local watermark_inline = utility:Create("Frame", {Vector2.new(1,1), watermark_outline}, {
                 Size = utility:Size(1, -2, 1, -2, watermark_outline),
                 Position = utility:Position(0, 1, 0, 1, watermark_outline),
                 Hidden = true,
-                ZIndex = 60,
+                ZIndex = 59,
                 Color = theme.inline,
                 Visible = window.watermark.visible
             })
@@ -637,28 +719,40 @@ do
                 Size = utility:Size(1, 0, 0, 1, watermark_frame),
                 Position = utility:Position(0, 0, 0, 0, watermark_frame),
                 Hidden = true,
-                ZIndex = 60,
+                ZIndex = 62,
                 Color = theme.accent,
                 Visible = window.watermark.visible
             })
+            library.accents[#library.accents + 1] = watermark_accent
             --
             local watermark_title = utility:Create("TextLabel", {Vector2.new(2 + 6,4), watermark_outline}, {
-                Text = string.format("splix - fps : %u - uid : %u", 35, 2),
                 Size = theme.textsize,
                 Font = theme.font,
                 Color = theme.textcolor,
                 OutlineColor = theme.textborder,
                 Hidden = true,
-                ZIndex = 60,
+                ZIndex = 64,
                 Position = utility:Position(0, 2 + 6, 0, 4, watermark_outline),
                 Visible = window.watermark.visible
             })
+            --
+            local watermark__gradient = utility:Create("Image", {Vector2.new(0, 0), watermark_frame}, {
+                Size = utility:Size(1, 0, 1, 0, watermark_frame),
+                Position = utility:Position(0, 0, 0, 0, watermark_frame),
+                Transparency = 1,
+                ZIndex = 63,
+                Hidden = true,
+                Visible = window.watermark.visible,
+            })
+            --
+            utility:LoadImage(watermark__gradient, "gradient", "https://i.imgur.com/5hmlrjX.png")
             --
             function window.watermark:UpdateSize()
                 watermark_outline.Size = utility:Size(0, watermark_title.TextBounds.X + 4 + (6*2), 0, 21)
                 watermark_inline.Size = utility:Size(1, -2, 1, -2, watermark_outline)
                 watermark_frame.Size = utility:Size(1, -2, 1, -2, watermark_inline)
                 watermark_accent.Size = utility:Size(1, 0, 0, 1, watermark_frame)
+                watermark__gradient.Size = utility:Size(1, 0, 1, 0, watermark_frame)
             end
             --
             function window.watermark:Visibility()
@@ -667,6 +761,7 @@ do
                 watermark_frame.Visible = window.watermark.visible
                 watermark_accent.Visible = window.watermark.visible
                 watermark_title.Visible = window.watermark.visible
+                watermark__gradient.Visible = window.watermark.visible
             end
             --
             function window.watermark:Update(updateType, updateValue)
@@ -678,15 +773,12 @@ do
             --
             utility:Connection(rs.RenderStepped, function(fps)
                 library.shared.fps = math.round(1 / fps)
-                library.shared.ping = tonumber(string.split(stats.Network.ServerStatsItem["Data Ping"]:GetValueString(), " ")[1] .. "")
+                library.shared.ping = math.round(game.Stats.PerformanceStats.Ping:GetValue())
             end)
-            --
-            watermark_title.Text = string.format("$$ Splix || uid : %u || ping : %i || fps : %u", 1, tostring(library.shared.ping), library.shared.fps)
-            window.watermark:UpdateSize()
             --
             spawn(function()
                 while wait(0.1) do
-                    watermark_title.Text = string.format("$$ Splix || uid : %u || ping : %i || fps : %u", 1, tostring(library.shared.ping), library.shared.fps)
+                    watermark_title.Text = string.format("devine | Da Hood | Buyer | Ping : " .. tostring(library.shared.ping) .. "ms | FPS : " .. tostring(library.shared.fps), window.name)
                     window.watermark:UpdateSize()
                 end
             end)
@@ -694,8 +786,170 @@ do
             return window.watermark
         end
         --
+        function window:NotificationList(info)
+            window.notificationlist = {notifications = {}}
+            --
+            local info = info or {}
+            --
+            function window.notificationlist:AddNotification(info)
+                local info = info or {}
+                local text = info.text or "label"
+                local lifetime = info.lifetime or 5
+                --
+                local notification = {pressed = false}
+                --
+                local notify_outline = utility:Create("Frame", {Vector2.new(0, 0)}, {
+                    Size = utility:Size(0, 18 + (7 * #text), 0, 29),
+                    Position = utility:Position(0, 29, 0, 34 + (#window.notificationlist.notifications * 35)),
+                    Color = theme.outline,
+                    ZIndex = 1,
+                    Transparency = 0,
+                    Hidden = true,
+                    Visible = true,
+                })notification["notify_outline"] = notify_outline
+                --
+                local notify_inline = utility:Create("Frame", {Vector2.new(1, 1), notify_outline}, {
+                    Size = utility:Size(1, -2, 1, -2, notify_outline),
+                    Position = utility:Position(0, 1, 0, 1, notify_outline),
+                    Color = theme.inline,
+                    ZIndex = 2,
+                    Transparency = 0,
+                    Hidden = true,
+                    Visible = true,
+                })notification["notify_inline"] = notify_inline
+                --
+                local notify_frame = utility:Create("Frame", {Vector2.new(1, 1), notify_inline}, {
+                    Size = utility:Size(1, -2, 1, -2, notify_inline),
+                    Position = utility:Position(0, 1, 0, 1, notify_inline),
+                    Color = theme.light_contrast,
+                    ZIndex = 3,
+                    Transparency = 0,
+                    Hidden = true,
+                    Visible = true,
+                })notification["notify_frame"] = notify_frame
+                --
+                local notify_accent = utility:Create("Frame", {Vector2.new(0, 0), notify_frame}, {
+                    Size = utility:Size(0, 5, 0, 25),
+                    Position = utility:Position(0, 0, 0, 0, notify_frame),
+                    Color = theme.accent,
+                    ZIndex = 3,
+                    Transparency = 0,
+                    Hidden = true,
+                    Visible = true,
+                })notification["notify_accent"] = notify_accent
+                --
+                local notify_title = utility:Create("TextLabel", {Vector2.new(8, 5), notify_frame}, {
+                    Size = 13,
+                    Position = utility:Position(0, 10, 0, 5, notify_frame),
+                    Font = Drawing.Fonts.Plex,
+                    Color = theme.textcolor,
+                    Outline = true,
+                    ZIndex = 5,
+                    Text = text,
+                    Transparency = 0,
+                    Hidden = true,
+                    Visible = true,
+                })notification["notify_title"] = notify_title
+                --
+                local notify__gradient = utility:Create("Image", {Vector2.new(0, 0), notify_frame}, {
+                    Size = utility:Size(1, 0, 1, 0, notify_frame),
+                    Position = utility:Position(0, 0, 0, 0, notify_frame),
+                    Transparency = 0,
+                    ZIndex = 4,
+                    Hidden = true,
+                    Visible = true,
+                })notification["notify__gradient"] = notify__gradient
+                --
+                utility:LoadImage(notify__gradient, "gradient", "https://i.imgur.com/5hmlrjX.png")
+                --
+                utility:Lerp(notify_outline, {Transparency = 1}, 0.25)
+                utility:Lerp(notify_inline, {Transparency = 1}, 0.25)
+                utility:Lerp(notify_frame, {Transparency = 1}, 0.25)
+                utility:Lerp(notify_accent, {Transparency = 10}, 0.25)
+                utility:Lerp(notify_title, {Transparency = 1}, 0.25)
+                utility:Lerp(notify__gradient, {Transparency = 0.5}, 0.25)
+                --
+                window.notificationlist.notifications[#window.notificationlist.notifications + 1] = notification
+                --
+                local function began_function(Input)
+                    if Input.UserInputType == Enum.UserInputType.MouseButton1 and utility:MouseOverDrawingInstance(notify_outline) and not notification.pressed then
+                        notification.Remove()
+                    end
+                end
+                --
+                library.began[#library.began + 1] = began_function
+                --
+                local function changed_function(Input)
+                    if Input.UserInputType == Enum.UserInputType.MouseMovement and not notification.pressed then
+                        if utility:MouseOverDrawingInstance(notify_outline) then
+                            local h, s, v = theme.accent:ToHSV()
+                            notify_inline.Color = Color3.fromHSV(h, 0.44, v)
+                        else
+                            notify_inline.Color = theme.inline
+                        end
+                    end
+                end
+                --
+                library.changed[#library.changed + 1] = changed_function
+                --
+                function notification.Remove()
+                    if notification.pressed then return end
+                    notification.pressed = true
+                    --
+                    utility:Lerp(notify_outline, {Transparency = 0}, 0.25)
+                    utility:Lerp(notify_inline, {Transparency = 0}, 0.25)
+                    utility:Lerp(notify_frame, {Transparency = 0}, 0.25)
+                    utility:Lerp(notify_accent, {Transparency = 0}, 0.25)
+                    utility:Lerp(notify_title, {Transparency = 0}, 0.25)
+                    utility:Lerp(notify__gradient, {Transparency = 0}, 0.25)
+                    --
+                    task.wait(0.25)
+                    --
+                    notify_outline:Remove()
+                    notify_inline:Remove()
+                    notify_frame:Remove()
+                    notify_accent:Remove()
+                    notify_title:Remove()
+                    notify__gradient:Remove()
+                    --
+                    for index, notify in next, window.notificationlist.notifications do
+                        if notify == notification then
+                            window.notificationlist.notifications[index] = nil
+                        end
+                    end
+                    --
+                    for index, func in next, library.changed do
+                        if func == changed_function then
+                            library.changed[index] = nil
+                        end
+                    end
+                    --
+                    for index, func in next, library.began do
+                        if func == began_function then
+                            library.began[index] = nil
+                        end
+                    end
+                    --
+                    window.notificationlist:SortNotifications()
+                end
+                --
+                delay(lifetime + 0.25, notification.Remove)
+            end
+            --
+            function window.notificationlist:SortNotifications()
+                for index, notification in next, window.notificationlist.notifications do
+                    notification["notify_outline"].Position = utility:Position(0, 0, 0, -34, notification["notify_outline"])
+                    notification["notify_inline"].Position = utility:Position(0, 1, 0, 1, notification["notify_outline"])
+                    notification["notify_frame"].Position = utility:Position(0, 1, 0, 1, notification["notify_inline"])
+                    notification["notify_accent"].Position = utility:Position(0, 0, 0, 0, notification["notify_frame"])
+                    notification["notify_title"].Position = utility:Position(0, 8, 0, 5, notification["notify_frame"])
+                    notification["notify__gradient"].Position = utility:Position(0, 0, 0, 0, notification["notify_frame"])
+                end
+            end
+        end
+        --
         function window:KeybindsList(info)
-            window.keybindslist = {visible = false, keybinds = {}}
+            window.keybindslist = {visible =  false, keybinds = {}}
             --
             local info = info or {}
             --
@@ -703,7 +957,7 @@ do
                 Size = utility:Size(0, 150, 0, 22),
                 Position = utility:Position(0, 10, 0.4, 0),
                 Hidden = true,
-                ZIndex = 55,
+                ZIndex = 53,
                 Color = theme.outline,
                 Visible = window.keybindslist.visible
             })window.keybindslist.outline = keybindslist_outline
@@ -712,7 +966,7 @@ do
                 Size = utility:Size(1, -2, 1, -2, keybindslist_outline),
                 Position = utility:Position(0, 1, 0, 1, keybindslist_outline),
                 Hidden = true,
-                ZIndex = 55,
+                ZIndex = 54,
                 Color = theme.inline,
                 Visible = window.keybindslist.visible
             })
@@ -730,20 +984,21 @@ do
                 Size = utility:Size(1, 0, 0, 1, keybindslist_frame),
                 Position = utility:Position(0, 0, 0, 0, keybindslist_frame),
                 Hidden = true,
-                ZIndex = 55,
+                ZIndex = 58,
                 Color = theme.accent,
                 Visible = window.keybindslist.visible
             })
+            library.accents[#library.accents + 1] = keybindslist_accent
             --
             local keybindslist_title = utility:Create("TextLabel", {Vector2.new(keybindslist_outline.Size.X/2,4), keybindslist_outline}, {
-                Text = "- Keybinds -",
+                Text = "keybinds",
                 Size = theme.textsize,
                 Font = theme.font,
                 Color = theme.textcolor,
                 OutlineColor = theme.textborder,
                 Center = true,
                 Hidden = true,
-                ZIndex = 55,
+                ZIndex = 59,
                 Position = utility:Position(0.5, 0, 0, 5, keybindslist_outline),
                 Visible = window.keybindslist.visible
             })
@@ -774,7 +1029,7 @@ do
                         Size = utility:Size(1, -2, 1, -2, keybind_outline),
                         Position = utility:Position(0, 1, 0, 1, keybind_outline),
                         Hidden = true,
-                        ZIndex = 55,
+                        ZIndex = 56,
                         Color = theme.inline,
                         Visible = window.keybindslist.visible
                     })
@@ -783,7 +1038,7 @@ do
                         Size = utility:Size(1, -2, 1, -2, keybind_inline),
                         Position = utility:Position(0, 1, 0, 1, keybind_inline),
                         Hidden = true,
-                        ZIndex = 55,
+                        ZIndex = 57,
                         Color = theme.dark_contrast,
                         Visible = window.keybindslist.visible
                     })
@@ -796,7 +1051,7 @@ do
                         OutlineColor = theme.textborder,
                         Center = false,
                         Hidden = true,
-                        ZIndex = 55,
+                        ZIndex = 60,
                         Position = utility:Position(0, 4, 0, 3, keybind_outline),
                         Visible = window.keybindslist.visible
                     })
@@ -808,7 +1063,7 @@ do
                         Color = theme.textcolor,
                         OutlineColor = theme.textborder,
                         Hidden = true,
-                        ZIndex = 55,
+                        ZIndex = 61,
                         Position = utility:Position(1, -4 - utility:GetTextBounds(keybindname, theme.textsize, theme.font).X, 0, 3, keybind_outline),
                         Visible = window.keybindslist.visible
                     })
@@ -902,6 +1157,7 @@ do
                 Hidden = true
             });window.cursor["cursor_inline"] = cursor_inline
             --
+            library.accents[#library.accents + 1] = cursor_inline
             utility:Connection(rs.RenderStepped, function()
                 local mouseLocation = utility:MouseLocation()
                 --
@@ -925,7 +1181,7 @@ do
             --
             spawn(function()
                 for i, v in pairs(library.drawings) do
-                    utility:Lerp(v[1], {Transparency = window.isVisible and v[3] or 0}, 0.25)
+                    pcall(function() utility:Lerp(v[1], {Transparency = window.isVisible and v[3] or 0}, 0.25) end)
                 end
             end)
             --
@@ -934,6 +1190,10 @@ do
             uis.MouseIconEnabled = not window.isVisible
             --
             window.fading = false
+            --
+            if window.isVisible then
+                window.currentPage:Show()
+            end
         end
         --
         function window:Initialize()
@@ -948,6 +1208,7 @@ do
             window:Watermark()
             window:KeybindsList()
             window:Cursor()
+            window:NotificationList()
             --
             window:Fade()
         end
@@ -985,18 +1246,6 @@ do
             if Input.KeyCode == window.uibind then
                 window:Fade()
             end
-            --[[
-            if Input.KeyCode == Enum.KeyCode.P then
-                local plrs = game:GetService("Players")
-                local plr = plrs.LocalPlayer
-                if #plrs:GetPlayers() <= 1 then
-                    plr:Kick("\nRejoining...")
-                    wait()
-                    game:GetService('TeleportService'):Teleport(game.PlaceId, plr)
-                else
-                    game:GetService('TeleportService'):TeleportToPlaceInstance(game.PlaceId, game.JobId, plr)
-                end
-            end]]
         end
         --
         utility:Connection(uis.InputBegan,function(Input)
@@ -1019,10 +1268,10 @@ do
             end
         end)
         --
-        utility:Connection(uis.InputChanged,function()
+        utility:Connection(uis.InputChanged,function(Input)
             for _, func in pairs(library.changed) do
                 local e,s = pcall(function()
-                    func()
+                    func(Input)
                 end)
             end
         end)
@@ -1031,7 +1280,7 @@ do
             window:Move(Vector2.new((utility:GetScreenSize().X/2) - (size.X/2), (utility:GetScreenSize().Y/2) - (size.Y/2)))
         end)
         --
-		return setmetatable(window, library)
+		return window, setmetatable(window, library)
 	end
     --
     function library:Page(info)
@@ -1040,7 +1289,7 @@ do
         --
         local window = self
         --
-        local page = {open = false, sections = {}, sectionOffset = {left = 0, right = 0}, window = window}
+        local page = {name = name, open = false, sections = {}, sectionOffset = {left = 0, right = 0}, window = window}
         --
         local position = 4
         --
@@ -1092,6 +1341,14 @@ do
             window:Move(window.main_frame.Position)
         end
         --
+        function page:GetSection(name)
+            for _, section in next, page.sections do
+                if section.name == name then
+                    return section
+                end
+            end
+        end
+        --
         function page:Show()
             if window.currentPage then
                 window.currentPage.page_button_color.Size = utility:Size(1, -2, 1, -1, window.currentPage.page_button_inline)
@@ -1135,7 +1392,7 @@ do
         side = side:lower()
         local window = self.window
         local page = self
-        local section = {window = window, page = page, visibleContent = {}, currentAxis = 20, side = side}
+        local section = {window = window, page = page, visibleContent = {}, currentAxis = 20, side = side, name = name}
         --
         local section_inline = utility:Create("Frame", {Vector2.new(side == "right" and (window.tab_frame.Size.X/2)+2 or 5,5 + page["sectionOffset"][side]), window.tab_frame}, {
             Size = utility:Size(0.5, -7, 0, 22, window.tab_frame),
@@ -1164,6 +1421,7 @@ do
             Color = theme.accent,
             Visible = page.open
         }, section.visibleContent);section["section_accent"] = section_accent
+        library.accents[#library.accents + 1] = section_accent
         --
         local section_title = utility:Create("TextLabel", {Vector2.new(3,3), section_frame}, {
             Text = name,
@@ -1191,14 +1449,13 @@ do
         local info = info or {}
         local msections = info.sections or info.Sections or {}
         local side = info.side or info.Side or "left"
-        local size = info.size or info.Size or 150
         side = side:lower()
         local window = self.window
         local page = self
         local multiSection = {window = window, page = page, sections = {}, backup = {}, visibleContent = {}, currentSection = nil, xAxis = 0, side = side}
         --
         local multiSection_inline = utility:Create("Frame", {Vector2.new(side == "right" and (window.tab_frame.Size.X/2)+2 or 5,5 + page["sectionOffset"][side]), window.tab_frame}, {
-            Size = utility:Size(0.5, -7, 0, size, window.tab_frame),
+            Size = utility:Size(0.5, -7, 0, 22, window.tab_frame),
             Position = utility:Position(side == "right" and 0.5 or 0, side == "right" and 2 or 5, 0, 5 + page.sectionOffset[side], window.tab_frame),
             Color = theme.inline,
             Visible = page.open
@@ -1238,9 +1495,10 @@ do
             Color = theme.accent,
             Visible = page.open
         }, multiSection.visibleContent);multiSection["section_accent"] = multiSection_accent
+        library.accents[#library.accents + 1] = multiSection_accent
         --
         for i,v in pairs(msections) do
-            local msection = {window = window, page = page, currentAxis = 24, sections = {}, visibleContent = {}, section_inline = multiSection_inline, section_outline = multiSection_outline, section_frame = multiSection_frame, section_accent = multiSection_accent}
+            local msection = {window = window, msection = multiSection, page = page, currentAxis = 24, sections = {}, visibleContent = {}, section_inline = multiSection_inline, section_outline = multiSection_outline, section_frame = multiSection_frame, section_accent = multiSection_accent}
             --
             local textBounds = utility:GetTextBounds(v, theme.textsize, theme.font)
             --
@@ -1284,6 +1542,7 @@ do
                         x.Visible = false
                     end
                 end
+                multiSection:Update()
             end
             --
             library.began[#library.began + 1] = function(Input)
@@ -1319,6 +1578,23 @@ do
             multiSection.backup[z] = x
         end
         --
+        function multiSection:GetMaxAxis()
+            local number, selected = 0, nil
+            for _, s in pairs(multiSection.sections) do
+                if s.currentAxis > number then
+                    number = s.currentAxis
+                    selected = s
+                end
+            end
+            return number
+        end
+        --
+        function multiSection:Update()
+            multiSection_inline.Size = utility:Size(0.5, -7, 0, multiSection:GetMaxAxis()+4, window.tab_frame)
+            multiSection_outline.Size = utility:Size(1, -2, 1, -2, multiSection_inline)
+            multiSection_frame.Size = utility:Size(1, -2, 1, -2, multiSection_outline)
+        end
+        --
         page.sectionOffset[side] = page.sectionOffset[side] + 100 + 5
         page.sections[#page.sections + 1] = multiSection
         --
@@ -1335,7 +1611,7 @@ do
         local page = self.page
         local section = self
         --
-        local label = {axis = section.currentAxis}
+        local label = {axis = section.currentAxis, text = name}
         --
         local label_title = utility:Create("TextLabel", {Vector2.new(middle and (section.section_frame.Size.X/2) or 4,label.axis), section.section_frame}, {
             Text = name,
@@ -1347,6 +1623,11 @@ do
             Position = utility:Position(middle and 0.5 or 0, middle and 0 or 4, 0, 0, section.section_frame),
             Visible = page.open
         }, section.visibleContent)
+        --
+        function label:Update(info)
+            label.text = info.name or info.Name or info.title or info.Title or "New Label"
+            label_title.Text = label.text
+        end
         --
         if pointer and tostring(pointer) ~= "" and tostring(pointer) ~= " " and not library.pointers[tostring(pointer)] then
             library.pointers[tostring(pointer)] = label
@@ -1411,6 +1692,8 @@ do
         --
         utility:LoadImage(toggle__gradient, "gradient", "https://i.imgur.com/5hmlrjX.png")
         --
+        library.accents[#library.accents + 1] = toggle_frame
+        --
         function toggle:Get()
             return toggle.current
         end
@@ -1419,6 +1702,17 @@ do
             if bool or not bool then
                 toggle.current = bool
                 toggle_frame.Color = toggle.current == true and theme.accent or theme.light_contrast
+                if toggle.current then
+                    local toggle_con toggle_con = rs.RenderStepped:Connect(function()
+                        if toggle.current then
+                            local h, s, v = theme.accent:ToHSV()
+                            toggle_inline.Color = Color3.fromHSV(h, 0.44, v)
+                        else
+                            toggle_inline.Color = theme.inline
+                            toggle_con:Disconnect()
+                        end
+                    end)
+                end
                 --
                 callback(toggle.current)
             end
@@ -1428,10 +1722,33 @@ do
             if Input.UserInputType == Enum.UserInputType.MouseButton1 and toggle_outline.Visible and window.isVisible and page.open and utility:MouseOverDrawing({section.section_frame.Position.X, section.section_frame.Position.Y + toggle.axis, section.section_frame.Position.X + section.section_frame.Size.X - toggle.addedAxis, section.section_frame.Position.Y + toggle.axis + 15}) and not window:IsOverContent() then
                 toggle.current = not toggle.current
                 toggle_frame.Color = toggle.current == true and theme.accent or theme.light_contrast
+                
+                if toggle.current then
+                    local toggle_con toggle_con = rs.RenderStepped:Connect(function()
+                        if toggle.current then
+                            local h, s, v = theme.accent:ToHSV()
+                            toggle_inline.Color = Color3.fromHSV(h, 0.44, v)
+                        else
+                            toggle_inline.Color = theme.inline
+                            toggle_con:Disconnect()
+                        end
+                    end)
+                end
                 --
                 callback(toggle.current)
                 --
                 if toggle.keybind and toggle.keybind.active then toggle.keybind.active = false window.keybindslist:Remove(toggle.keybind.keybindname) end
+            end
+        end
+        --
+        library.changed[#library.changed + 1] = function(Input)
+            if Input.UserInputType == Enum.UserInputType.MouseMovement and toggle_outline.Visible and window.isVisible then
+                if utility:MouseOverDrawing({section.section_frame.Position.X, section.section_frame.Position.Y + toggle.axis, section.section_frame.Position.X + section.section_frame.Size.X - toggle.addedAxis, section.section_frame.Position.Y + toggle.axis + 15}) and not window:IsOverContent() then
+                    local h, s, v = theme.accent:ToHSV()
+                    toggle_inline.Color = Color3.fromHSV(h, 0.44, v)
+                else
+                    toggle_inline.Color = theme.inline
+                end
             end
         end
         --
@@ -1615,6 +1932,7 @@ do
                                 Position = utility:Position(0, 0, 0, 0, colorpicker_open_frame),
                                 Color = theme.accent
                             }, colorpicker.holder.drawings)
+                            library.accents[#library.accents + 1] = colorpicker_open_accent
                             --
                             local colorpicker_title = utility:Create("TextLabel", {Vector2.new(4,2), colorpicker_open_frame}, {
                                 Text = cpinfo,
@@ -1797,7 +2115,7 @@ do
                 end
             end
             --
-            library.changed[#library.changed + 1] = function()
+            library.changed[#library.changed + 1] = function(Input)
                 if colorpicker.open and colorpicker.holding.picker or colorpicker.holding.huepicker or colorpicker.holding.transparency then
                     if window.isVisible then
                         colorpicker:Refresh()
@@ -1811,6 +2129,14 @@ do
                         if colorpicker.holding.transparency then
                             colorpicker.holding.transparency = not colorpicker.holding.transparency
                         end
+                    end
+                end
+                if Input.UserInputType == Enum.UserInputType.MouseMovement and colorpicker_outline.Visible and window.isVisible then
+                    if utility:MouseOverDrawing({section.section_frame.Position.X + (section.section_frame.Size.X - (colorpicker.index == 0 and (30 + 4 + 2) or (64 + 4 + 2))), section.section_frame.Position.Y + colorpicker.axis, section.section_frame.Position.X + section.section_frame.Size.X - (colorpicker.index == 1 and 36 or 0), section.section_frame.Position.Y + colorpicker.axis + 15}) and not window:IsOverContent() then
+                        local h, s, v = theme.accent:ToHSV()
+                        colorpicker_inline.Color = Color3.fromHSV(h, 0.44, v)
+                    else
+                        colorpicker_inline.Color = theme.inline
                     end
                 end
             end
@@ -1830,7 +2156,7 @@ do
             local info = info or {}
             local def = info.def or info.Def or info.default or info.Default or nil
             local pointer = info.pointer or info.Pointer or info.flag or info.Flag or nil
-            local mode = info.mode or info.Mode or "Always"
+            local mode = info.mode or info.Mode or "Toggle"
             local keybindname = info.keybindname or info.keybindName or info.KeybindName or info.Keybindname or nil
             local callback = info.callback or info.callBack or info.Callback or info.CallBack or function()end
             --
@@ -1840,9 +2166,9 @@ do
             --
             toggle.keybind = keybind
             --
-            local allowedKeyCodes = {"Q","W","E","R","T","Y","U","I","O","P","A","S","D","F","G","H","J","K","L","Z","X","C","V","B","N","M","One","Two","Three","Four","Five","Six","Seveen","Eight","Nine","0","Insert","Tab","Home","End","LeftAlt","LeftControl","LeftShift","RightAlt","RightControl","RightShift","CapsLock"}
+            local allowedKeyCodes = {"Q","W","E","R","T","Y","U","I","O","P","A","S","D","F","G","H","J","K","L","Z","X","C","V","B","N","M","One","Two","Three","Four","Five","Six","Seveen","Eight","Nine","0","Insert","Tab","Home","End","LeftAlt","LeftControl","LeftShift","RightAlt","RightControl","RightShift","CapsLock","Delete","PageUp","PageDown"}
             local allowedInputTypes = {"MouseButton1","MouseButton2","MouseButton3"}
-            local shortenedInputs = {["MouseButton1"] = "MB1", ["MouseButton2"] = "MB2", ["MouseButton3"] = "MB3", ["Insert"] = "Ins", ["LeftAlt"] = "LAlt", ["LeftControl"] = "LC", ["LeftShift"] = "LS", ["RightAlt"] = "RAlt", ["RightControl"] = "RC", ["RightShift"] = "RS", ["CapsLock"] = "Caps"}
+            local shortenedInputs = {["MouseButton1"] = "MB1", ["MouseButton2"] = "MB2", ["MouseButton3"] = "MB3", ["Insert"] = "Ins", ["LeftAlt"] = "LAlt", ["LeftControl"] = "LC", ["LeftShift"] = "LS", ["RightAlt"] = "RAlt", ["RightControl"] = "RC", ["RightShift"] = "RS", ["CapsLock"] = "Caps", ["Delete"] = "Del", ["PageUp"] = "PUP", ["PageDown"] = "PDO"}
             --
             local keybind_outline = utility:Create("Frame", {Vector2.new(section.section_frame.Size.X-(40+4),keybind.axis), section.section_frame}, {
                 Size = utility:Size(0, 40, 0, 17),
@@ -1911,6 +2237,10 @@ do
                 --
                 return false
             end
+
+            function keybind:SetMode(mode)
+                keybind.mode = mode
+            end
             --
             function keybind:Get()
                 return keybind.current
@@ -1932,11 +2262,12 @@ do
                 --
                 keybind.active = keybind.mode == "Always" and true or false
                 if keybind.current[1] and keybind.current[2] then
-                    callback(Enum[keybind.current[1]][keybind.current[2]], keybind.active)
+                    toggle:Set(true)
                 end
             end
             --
             keybind:Change(def)
+            keybind:SetMode(mode)
             --
             library.began[#library.began + 1] = function(Input)
                 if keybind.current[1] and keybind.current[2] then
@@ -1945,12 +2276,17 @@ do
                             local old = keybind.active
                             keybind.active = toggle:Get()
                             if keybind.active then window.keybindslist:Add(keybindname or name, keybind_value.Text) else window.keybindslist:Remove(keybindname or name) end
-                            if keybind.active ~= old then callback(Enum[keybind.current[1]][keybind.current[2]], keybind.active) end
+                            toggle:Set(true)
                         elseif keybind.mode == "Toggle" then
+                            local old = keybind.active
+                            keybind.active = not toggle:Get()
+                            if keybind.active then window.keybindslist:Add(keybindname or name, keybind_value.Text) else window.keybindslist:Remove(keybindname or name) end
+                            toggle:Set(keybind.active)
+                        elseif keybind.mode == "Always" then
                             local old = keybind.active
                             keybind.active = not keybind.active == true and toggle:Get() or false
                             if keybind.active then window.keybindslist:Add(keybindname or name, keybind_value.Text) else window.keybindslist:Remove(keybindname or name) end
-                            if keybind.active ~= old then callback(Enum[keybind.current[1]][keybind.current[2]], keybind.active) end
+                            toggle:Set(true)
                         end
                     end
                 end
@@ -1963,7 +2299,7 @@ do
                         keybind_frame.Color = theme.light_contrast
                         --
                         window.keybindslist:Remove(keybindname or name)
-                        callback(Enum[keybind.current[1]][keybind.current[2]], keybind.active)
+                        toggle:Set(false)
                     end
                 end
                 --
@@ -2060,13 +2396,24 @@ do
                 end
             end
             --
+            library.changed[#library.changed + 1] = function(Input)
+                if Input.UserInputType == Enum.UserInputType.MouseMovement and keybind_outline.Visible and window.isVisible then
+                    if utility:MouseOverDrawing({section.section_frame.Position.X + (section.section_frame.Size.X - (40+4+2)), section.section_frame.Position.Y + keybind.axis, section.section_frame.Position.X + section.section_frame.Size.X, section.section_frame.Position.Y + keybind.axis + 17}) and not window:IsOverContent() then
+                        local h, s, v = theme.accent:ToHSV()
+                        keybind_inline.Color = Color3.fromHSV(h, 0.44, v)
+                    else
+                        keybind_inline.Color = theme.inline
+                    end
+                end
+            end
+            --
             library.ended[#library.ended + 1] = function(Input)
                 if keybind.active and keybind.mode == "Hold" then
                     if keybind.current[1] and keybind.current[2] then
                         if Input.KeyCode == Enum[keybind.current[1]][keybind.current[2]] or Input.UserInputType == Enum[keybind.current[1]][keybind.current[2]] then
                             keybind.active = false
                             window.keybindslist:Remove(keybindname or name)
-                            callback(Enum[keybind.current[1]][keybind.current[2]], keybind.active)
+                            toggle:Set(false)
                         end
                     end
                 end
@@ -2163,6 +2510,8 @@ do
         --
         utility:LoadImage(slider__gradient, "gradient", "https://i.imgur.com/5hmlrjX.png")
         --
+        library.accents[#library.accents + 1] = slider_slide
+        --
         function slider:Set(value)
             slider.current = math.clamp(math.round(value * slider.decimals) / slider.decimals, slider.min, slider.max)
             local percent = 1 - ((slider.max - slider.current) / (slider.max - slider.min))
@@ -2201,6 +2550,14 @@ do
         library.changed[#library.changed + 1] = function(Input)
             if slider.holding and window.isVisible then
                 slider:Refresh()
+            end
+            if Input.UserInputType == Enum.UserInputType.MouseMovement and slider_outline.Visible and window.isVisible then
+                if utility:MouseOverDrawing({section.section_frame.Position.X, section.section_frame.Position.Y + slider.axis, section.section_frame.Position.X + section.section_frame.Size.X, section.section_frame.Position.Y + slider.axis + 27}) and not window:IsOverContent() then
+                    local h, s, v = theme.accent:ToHSV()
+                    slider_inline.Color = Color3.fromHSV(h, 0.44, v)
+                else
+                    slider_inline.Color = theme.inline
+                end
             end
         end
         --
@@ -2273,6 +2630,17 @@ do
             end
         end
         --
+        library.changed[#library.changed + 1] = function(Input)
+            if Input.UserInputType == Enum.UserInputType.MouseMovement and button_outline.Visible and window.isVisible then
+                if utility:MouseOverDrawing({section.section_frame.Position.X, section.section_frame.Position.Y + button.axis, section.section_frame.Position.X + section.section_frame.Size.X, section.section_frame.Position.Y + button.axis + 20}) and not window:IsOverContent() then
+                    local h, s, v = theme.accent:ToHSV()
+                    button_inline.Color = Color3.fromHSV(h, 0.44, v)
+                else
+                    button_inline.Color = theme.inline
+                end
+            end
+        end
+        --
         if pointer and tostring(pointer) ~= "" and tostring(pointer) ~= " " and not library.pointers[tostring(pointer)] then
             library.pointers[tostring(pointer)] = button
         end
@@ -2342,10 +2710,129 @@ do
                     buttons[i][2]()
                 end
             end
+            --
+            library.changed[#library.changed + 1] = function(Input)
+                if Input.UserInputType == Enum.UserInputType.MouseMovement and button_outline.Visible and window.isVisible then
+                    if utility:MouseOverDrawing({section.section_frame.Position.X + (i == 2 and (section.section_frame.Size.X/2) or 0), section.section_frame.Position.Y + button.axis, section.section_frame.Position.X + section.section_frame.Size.X - (i == 1 and (section.section_frame.Size.X/2) or 0), section.section_frame.Position.Y + button.axis + 20}) and not window:IsOverContent() then
+                        local h, s, v = theme.accent:ToHSV()
+                        button_inline.Color = Color3.fromHSV(h, 0.44, v)
+                    else
+                        button_inline.Color = theme.inline
+                    end
+                end
+            end
         end
         --
         section.currentAxis = section.currentAxis + 20 + 4
         section:Update()
+    end
+    --
+    function sections:Textbox(info)
+        local info = info or {}
+        local name = info.name or info.Name or info.title or info.Title or "New Textbox"
+        local pointer = info.pointer or info.Pointer or info.flag or info.Flag or nil
+        local callback = info.callback or info.callBack or info.Callback or info.CallBack or function()end
+        --
+        local window = self.window
+        local page = self.page
+        local section = self
+        --
+        local textbox = {axis = section.currentAxis, text = "", focused = false}
+        --
+        local text_outline = utility:Create("Frame", {Vector2.new(4,textbox.axis), section.section_frame}, {
+            Size = utility:Size(1, -8, 0, 20, section.section_frame),
+            Position = utility:Position(0, 4, 0, textbox.axis, section.section_frame),
+            Color = theme.outline,
+            Visible = page.open
+        }, section.visibleContent)
+        --
+        local text_inline = utility:Create("Frame", {Vector2.new(1,1), text_outline}, {
+            Size = utility:Size(1, -2, 1, -2, text_outline),
+            Position = utility:Position(0, 1, 0, 1, text_outline),
+            Color = theme.inline,
+            Visible = page.open
+        }, section.visibleContent)
+        --
+        local text_frame = utility:Create("Frame", {Vector2.new(1,1), text_inline}, {
+            Size = utility:Size(1, -2, 1, -2, text_inline),
+            Position = utility:Position(0, 1, 0, 1, text_inline),
+            Color = theme.light_contrast,
+            Visible = page.open
+        }, section.visibleContent)
+        --
+        local text_gradient = utility:Create("Image", {Vector2.new(0,0), text_frame}, {
+            Size = utility:Size(1, 0, 1, 0, text_frame),
+            Position = utility:Position(0, 0, 0 , 0, text_frame),
+            Transparency = 0.5,
+            Visible = page.open
+        }, section.visibleContent)
+        --
+        local text_title = utility:Create("TextLabel", {Vector2.new(text_frame.Size.X/2,1), text_frame}, {
+            Text = name,
+            Size = theme.textsize,
+            Font = theme.font,
+            Color = theme.textcolor,
+            OutlineColor = theme.textborder,
+            Center = true,
+            Position = utility:Position(0.5, 0, 0, 1, text_frame),
+            Visible = page.open
+        }, section.visibleContent)
+        --
+        utility:LoadImage(text_gradient, "gradient", "https://i.imgur.com/5hmlrjX.png")
+        --
+        function textbox:Get()
+            return textbox.text
+        end
+        --
+        function textbox:Set(value)
+            textbox.text = value
+            text_title.Text = textbox.text
+            callback(textbox.text)
+        end
+        --
+        library.began[#library.began + 1] = function(Input)
+            if Input.UserInputType == Enum.UserInputType.MouseButton1 and text_outline.Visible and window.isVisible and utility:MouseOverDrawing({section.section_frame.Position.X, section.section_frame.Position.Y + textbox.axis, section.section_frame.Position.X + section.section_frame.Size.X, section.section_frame.Position.Y + textbox.axis + 20}) and not window:IsOverContent() then
+                textbox.focused = true
+            elseif Input.UserInputType == Enum.UserInputType.Keyboard and text_outline.Visible and textbox.focused and (Input.KeyCode.Name ~= "Backspace" and text_title.TextBounds.X < text_outline.Size.X - 10 or Input.KeyCode.Name == "Backspace") then
+                textbox:Set(Input.KeyCode.Name == "Backspace" and textbox.text:sub(1, -2) or textbox.text .. (uis:IsKeyDown("LeftShift") and utility:ShiftKey(uis:GetStringForKeyCode(Input.KeyCode):lower()) or uis:GetStringForKeyCode(Input.KeyCode):lower()))
+                wait(.75)
+                if uis:IsKeyDown(Input.KeyCode.Name) then
+                    local time = 1
+                    while uis:IsKeyDown(Input.KeyCode.Name) do
+                        if (Input.KeyCode.Name ~= "Backspace" and text_title.TextBounds.X < text_outline.Size.X - 10 or Input.KeyCode.Name == "Backspace") then
+                            textbox:Set(Input.KeyCode.Name == "Backspace" and textbox.text:sub(1, -2) or textbox.text .. (uis:IsKeyDown("LeftShift") and utility:ShiftKey(uis:GetStringForKeyCode(Input.KeyCode):lower()) or uis:GetStringForKeyCode(Input.KeyCode):lower()))
+                            wait(.3 / time)
+                            time = time + 1
+                        else
+                            break
+                        end
+                    end
+                end
+            else
+                textbox.focused = false
+            end
+            window.currentContent.textbox = textbox.focused and textbox or nil
+        end
+        --
+        library.changed[#library.changed + 1] = function(Input)
+            if Input.UserInputType == Enum.UserInputType.MouseMovement and text_outline.Visible and window.isVisible then
+                if utility:MouseOverDrawing({section.section_frame.Position.X, section.section_frame.Position.Y + textbox.axis, section.section_frame.Position.X + section.section_frame.Size.X, section.section_frame.Position.Y + textbox.axis + 20}) and not window:IsOverContent() then
+                    local h, s, v = theme.accent:ToHSV()
+                    text_inline.Color = Color3.fromHSV(h, 0.44, v)
+                else
+                    text_inline.Color = theme.inline
+                end
+            end
+        end
+        --
+        if pointer and tostring(pointer) ~= "" and tostring(pointer) ~= " " and not library.pointers[tostring(pointer)] then
+            library.pointers[tostring(pointer)] = textbox
+        end
+        --
+        section.currentAxis = section.currentAxis + 20 + 4
+        section:Update()
+        --
+        return textbox
     end
     --
     function sections:Dropdown(info)
@@ -2354,7 +2841,7 @@ do
         local options = info.options or info.Options or {"1", "2", "3"}
         local def = info.def or info.Def or info.default or info.Default or options[1]
         local pointer = info.pointer or info.Pointer or info.flag or info.Flag or nil
-        local callback = info.callback or info.callBack or info.Callback or info.CallBack or function()end
+        local callback = info.callback or info.callBack or info.Callback or info.CallBack or function() end
         --
         local window = self.window
         local page = self.page
@@ -2423,6 +2910,13 @@ do
             if dropdown.open and dropdown.holder.inline then
                 for i,v in pairs(dropdown.holder.buttons) do
                     v[1].Color = v[1].Text == tostring(dropdown.current) and theme.accent or theme.textcolor
+                    local dropdown_connect dropdown_connect = rs.RenderStepped:Connect(function()
+                        if dropdown.open and v[1].Text == tostring(dropdown.current) then
+                            v[1].Color = theme.accent
+                        else
+                            dropdown_connect:Disconnect()
+                        end
+                    end)
                     v[1].Position = utility:Position(0, v[1].Text == tostring(dropdown.current) and 8 or 6, 0, 2, v[2])
                     utility:UpdateOffset(v[1], {Vector2.new(v[1].Text == tostring(dropdown.current) and 8 or 6, 2), v[2]})
                 end
@@ -2433,7 +2927,12 @@ do
             if typeof(value) == "string" and table.find(options, value) then
                 dropdown.current = value
                 dropdown_value.Text = value
+                callback(value)
             end
+        end
+        --
+        function dropdown:Refresh(newOptions)
+            options = newOptions
         end
         --
         function dropdown:Get()
@@ -2448,6 +2947,7 @@ do
                             dropdown.current = v[1].Text
                             dropdown_value.Text = dropdown.current
                             dropdown:Update()
+                            callback(dropdown.current)
                         end
                     end
                 elseif utility:MouseOverDrawing({section.section_frame.Position.X, section.section_frame.Position.Y + dropdown.axis, section.section_frame.Position.X + section.section_frame.Size.X, section.section_frame.Position.Y + dropdown.axis + 15 +  20}) and not window:IsOverContent() then
@@ -2477,16 +2977,6 @@ do
                                 Color = theme.light_contrast,
                                 Visible = page.open
                             }, dropdown.holder.drawings)
-                            --[[
-                            local dropdown_value_gradient = utility:Create("Image", {Vector2.new(0,0), dropdown_value_frame}, {
-                                Size = utility:Size(1, 0, 1, 0, dropdown_value_frame),
-                                Position = utility:Position(0, 0, 0 , 0, dropdown_value_frame),
-                                Transparency = 0.5,
-                                Visible = page.open
-                            }, dropdown.holder.drawings)
-                            --
-                            utility:LoadImage(dropdown_value_gradient, "gradient", "https://i.imgur.com/5hmlrjX.png")]]
-                            --
                             local dropdown_value = utility:Create("TextLabel", {Vector2.new(v == tostring(dropdown.current) and 8 or 6,2), dropdown_value_frame}, {
                                 Text = v,
                                 Size = theme.textsize,
@@ -2500,6 +2990,8 @@ do
                         --
                         window.currentContent.frame = dropdown_open_inline
                         window.currentContent.dropdown = dropdown
+                        --
+                        dropdown:Update()
                     else
                         dropdown.open = not dropdown.open
                         utility:LoadImage(dropdown_image, "arrow_down", "https://i.imgur.com/tVqy0nL.png")
@@ -2546,6 +3038,17 @@ do
                 --
                 window.currentContent.frame = nil
                 window.currentContent.dropdown = nil
+            end
+        end
+        --
+        library.changed[#library.changed + 1] = function(Input)
+            if Input.UserInputType == Enum.UserInputType.MouseMovement and dropdown_outline.Visible and window.isVisible then
+                if utility:MouseOverDrawing({section.section_frame.Position.X, section.section_frame.Position.Y + dropdown.axis, section.section_frame.Position.X + section.section_frame.Size.X, section.section_frame.Position.Y + dropdown.axis + 15 +  20}) and not window:IsOverContent() then
+                    local h, s, v = theme.accent:ToHSV()
+                    dropdown_inline.Color = Color3.fromHSV(h, 0.44, v)
+                else
+                    dropdown_inline.Color = theme.inline
+                end
             end
         end
         --
@@ -2793,6 +3296,17 @@ do
             end
         end
         --
+        library.changed[#library.changed + 1] = function(Input)
+            if Input.UserInputType == Enum.UserInputType.MouseMovement and multibox_outline.Visible and window.isVisible then
+                if utility:MouseOverDrawing({section.section_frame.Position.X, section.section_frame.Position.Y + multibox.axis, section.section_frame.Position.X + section.section_frame.Size.X, section.section_frame.Position.Y + multibox.axis + 15 +  20}) and not window:IsOverContent() then
+                    local h, s, v = theme.accent:ToHSV()
+                    multibox_inline.Color = Color3.fromHSV(h, 0.44, v)
+                else
+                    multibox_inline.Color = theme.inline
+                end
+            end
+        end
+        --
         if pointer and tostring(pointer) ~= "" and tostring(pointer) ~= " " and not library.pointers[tostring(pointer)] then
             library.pointers[tostring(pointer)] = multibox
         end
@@ -2808,7 +3322,6 @@ do
         local name = info.name or info.Name or info.title or info.Title or "New Keybind"
         local def = info.def or info.Def or info.default or info.Default or nil
         local pointer = info.pointer or info.Pointer or info.flag or info.Flag or nil
-        local mode = info.mode or info.Mode or "Always"
         local keybindname = info.keybindname or info.keybindName or info.Keybindname or info.KeybindName or nil
         local callback = info.callback or info.callBack or info.Callback or info.CallBack or function()end
         --
@@ -2913,39 +3426,19 @@ do
                 v.Color = v.Text == keybind.mode and theme.accent or theme.textcolor
             end
             --
-            keybind.active = keybind.mode == "Always" and true or false
-            if keybind.current[1] and keybind.current[2] then
-                callback(Enum[keybind.current[1]][keybind.current[2]], keybind.active)
-            end
         end
         --
         keybind:Change(def)
         --
         library.began[#library.began + 1] = function(Input)
-            if keybind.current[1] and keybind.current[2] then
-                if Input.KeyCode == Enum[keybind.current[1]][keybind.current[2]] or Input.UserInputType == Enum[keybind.current[1]][keybind.current[2]] then
-                    if keybind.mode == "Hold" then
-                        keybind.active = true
-                        if keybind.active then window.keybindslist:Add(keybindname or name, keybind_value.Text) else window.keybindslist:Remove(keybindname or name) end
-                        callback(Enum[keybind.current[1]][keybind.current[2]], keybind.active)
-                    elseif keybind.mode == "Toggle" then
-                        keybind.active = not keybind.active
-                        if keybind.active then window.keybindslist:Add(keybindname or name, keybind_value.Text) else window.keybindslist:Remove(keybindname or name) end
-                        callback(Enum[keybind.current[1]][keybind.current[2]], keybind.active)
-                    end
-                end
-            end
-            --
             if keybind.selecting and window.isVisible then
                 local done = keybind:Change(Input.KeyCode.Name ~= "Unknown" and Input.KeyCode or Input.UserInputType)
                 if done then
                     keybind.selecting = false
                     keybind.active = keybind.mode == "Always" and true or false
                     keybind_frame.Color = theme.light_contrast
+                    callback(Input.KeyCode)
                     --
-                    window.keybindslist:Remove(keybindname or name)
-                    --
-                    callback(Enum[keybind.current[1]][keybind.current[2]], keybind.active)
                 end
             end
             --
@@ -2955,101 +3448,21 @@ do
             end
             --
             if Input.UserInputType == Enum.UserInputType.MouseButton1 and window.isVisible and keybind_outline.Visible then
-                if utility:MouseOverDrawing({section.section_frame.Position.X, section.section_frame.Position.Y + keybind.axis, section.section_frame.Position.X + section.section_frame.Size.X, section.section_frame.Position.Y + keybind.axis + 17}) and not window:IsOverContent() and not keybind.selecting then
+                if utility:MouseOverDrawing({section.section_frame.Position.X + (section.section_frame.Size.X - (40+4+2)), section.section_frame.Position.Y + keybind.axis, section.section_frame.Position.X + section.section_frame.Size.X, section.section_frame.Position.Y + keybind.axis + 17}) and not window:IsOverContent() and not keybind.selecting then
                     keybind.selecting = true
                     keybind_frame.Color = theme.dark_contrast
                 end
-                if keybind.open and keybind.modemenu.frame then
-                    if utility:MouseOverDrawing({keybind.modemenu.frame.Position.X, keybind.modemenu.frame.Position.Y, keybind.modemenu.frame.Position.X + keybind.modemenu.frame.Size.X, keybind.modemenu.frame.Position.Y + keybind.modemenu.frame.Size.Y}) then
-                        local changed = false
-                        --
-                        for i,v in pairs(keybind.modemenu.buttons) do
-                            if utility:MouseOverDrawing({keybind.modemenu.frame.Position.X, keybind.modemenu.frame.Position.Y + (15 * (i - 1)), keybind.modemenu.frame.Position.X + keybind.modemenu.frame.Size.X, keybind.modemenu.frame.Position.Y + (15 * (i - 1)) + 15}) then
-                                keybind.mode = v.Text
-                                changed = true
-                            end
-                        end
-                        --
-                        if changed then keybind:Reset() end
-                    else
-                        keybind.open = not keybind.open
-                        --
-                        for i,v in pairs(keybind.modemenu.drawings) do
-                            utility:Remove(v)
-                        end
-                        --
-                        keybind.modemenu.drawings = {}
-                        keybind.modemenu.buttons = {}
-                        keybind.modemenu.frame = nil
-                        --
-                        window.currentContent.frame = nil
-                        window.currentContent.keybind = nil
-                    end
-                end
             end
             --
-            if Input.UserInputType == Enum.UserInputType.MouseButton2 and window.isVisible and keybind_outline.Visible then
-                if utility:MouseOverDrawing({section.section_frame.Position.X, section.section_frame.Position.Y + keybind.axis, section.section_frame.Position.X + section.section_frame.Size.X, section.section_frame.Position.Y + keybind.axis + 17}) and not window:IsOverContent() and not keybind.selecting then
-                    window:CloseContent()
-                    keybind.open = not keybind.open
-                    --
-                    local modemenu = utility:Create("Frame", {Vector2.new(keybind_outline.Size.X + 2,0), keybind_outline}, {
-                        Size = utility:Size(0, 64, 0, 49),
-                        Position = utility:Position(1, 2, 0, 0, keybind_outline),
-                        Color = theme.outline,
-                        Visible = page.open
-                    }, keybind.modemenu.drawings);keybind.modemenu.frame = modemenu
-                    --
-                    local modemenu_inline = utility:Create("Frame", {Vector2.new(1,1), modemenu}, {
-                        Size = utility:Size(1, -2, 1, -2, modemenu),
-                        Position = utility:Position(0, 1, 0, 1, modemenu),
-                        Color = theme.inline,
-                        Visible = page.open
-                    }, keybind.modemenu.drawings)
-                    --
-                    local modemenu_frame = utility:Create("Frame", {Vector2.new(1,1), modemenu_inline}, {
-                        Size = utility:Size(1, -2, 1, -2, modemenu_inline),
-                        Position = utility:Position(0, 1, 0, 1, modemenu_inline),
-                        Color = theme.light_contrast,
-                        Visible = page.open
-                    }, keybind.modemenu.drawings)
-                    --
-                    local keybind__gradient = utility:Create("Image", {Vector2.new(0,0), modemenu_frame}, {
-                        Size = utility:Size(1, 0, 1, 0, modemenu_frame),
-                        Position = utility:Position(0, 0, 0 , 0, modemenu_frame),
-                        Transparency = 0.5,
-                        Visible = page.open
-                    }, keybind.modemenu.drawings)
-                    --
-                    utility:LoadImage(keybind__gradient, "gradient", "https://i.imgur.com/5hmlrjX.png")
-                    --
-                    for i,v in pairs({"Always", "Toggle", "Hold"}) do
-                        local button_title = utility:Create("TextLabel", {Vector2.new(modemenu_frame.Size.X/2,15 * (i-1)), modemenu_frame}, {
-                            Text = v,
-                            Size = theme.textsize,
-                            Font = theme.font,
-                            Color = v == keybind.mode and theme.accent or theme.textcolor,
-                            Center = true,
-                            OutlineColor = theme.textborder,
-                            Position = utility:Position(0.5, 0, 0, 15 * (i-1), modemenu_frame),
-                            Visible = page.open
-                        }, keybind.modemenu.drawings);keybind.modemenu.buttons[#keybind.modemenu.buttons + 1] = button_title
-                    end
-                    --
-                    window.currentContent.frame = modemenu
-                    window.currentContent.keybind = keybind
-                end
-            end
         end
         --
-        library.ended[#library.ended + 1] = function(Input)
-            if keybind.active and keybind.mode == "Hold" then
-                if keybind.current[1] and keybind.current[2] then
-                    if Input.KeyCode == Enum[keybind.current[1]][keybind.current[2]] or Input.UserInputType == Enum[keybind.current[1]][keybind.current[2]] then
-                        keybind.active = false
-                        window.keybindslist:Remove(keybindname or name)
-                        callback(Enum[keybind.current[1]][keybind.current[2]], keybind.active)
-                    end
+        library.changed[#library.changed + 1] = function(Input)
+            if Input.UserInputType == Enum.UserInputType.MouseMovement and keybind_outline.Visible and window.isVisible then
+                if utility:MouseOverDrawing({section.section_frame.Position.X + (section.section_frame.Size.X - (40+4+2)), section.section_frame.Position.Y + keybind.axis, section.section_frame.Position.X + section.section_frame.Size.X, section.section_frame.Position.Y + keybind.axis + 17}) and not window:IsOverContent() then
+                    local h, s, v = theme.accent:ToHSV()
+                    keybind_inline.Color = Color3.fromHSV(h, 0.44, v)
+                else
+                    keybind_inline.Color = theme.inline
                 end
             end
         end
@@ -3135,10 +3548,18 @@ do
         --
         function colorpicker:Set(color, transp_val)
             if typeof(color) == "table" then
-                colorpicker.current = color
-                colorpicker_frame.Color = Color3.fromHSV(colorpicker.current[1], colorpicker.current[2], colorpicker.current[3])
-                colorpicker_frame.Transparency = 1 - colorpicker.current[4]
-                callback(Color3.fromHSV(colorpicker.current[1], colorpicker.current[2], colorpicker.current[3]), colorpicker.current[4])
+                if color.Color and color.Transparency then
+                    local h, s, v = table.unpack(color.Color)
+                    colorpicker.current = {h, s, v , color.Transparency}
+                    colorpicker_frame.Color = Color3.fromHSV(colorpicker.current[1], colorpicker.current[2], colorpicker.current[3])
+                    colorpicker_frame.Transparency = 1 - colorpicker.current[4]
+                    callback(Color3.fromHSV(colorpicker.current[1], colorpicker.current[2], colorpicker.current[3]), colorpicker.current[4])
+                else
+                    colorpicker.current = color
+                    colorpicker_frame.Color = Color3.fromHSV(colorpicker.current[1], colorpicker.current[2], colorpicker.current[3])
+                    colorpicker_frame.Transparency = 1 - colorpicker.current[4]
+                    callback(Color3.fromHSV(colorpicker.current[1], colorpicker.current[2], colorpicker.current[3]), colorpicker.current[4])
+                end
             elseif typeof(color) == "color3" then
                 local h, s, v = color:ToHSV()
                 colorpicker.current = {h, s, v, (transp_val or 0)}
@@ -3200,7 +3621,7 @@ do
         end
         --
         function colorpicker:Get()
-            return Color3.fromHSV(colorpicker.current[1], colorpicker.current[2], colorpicker.current[3])
+            return {Color = Color3.fromHSV(colorpicker.current[1], colorpicker.current[2], colorpicker.current[3]), Transparency = colorpicker.current[4]}
         end
         --
         library.began[#library.began + 1] = function(Input)
@@ -3244,6 +3665,14 @@ do
                             Position = utility:Position(0, 0, 0, 0, colorpicker_open_frame),
                             Color = theme.accent
                         }, colorpicker.holder.drawings)
+                        --
+                        local accent_connection accent_connection = rs.RenderStepped:Connect(function()
+                            if colorpicker.open then
+                                colorpicker_open_accent.Color = theme.accent
+                            else
+                                accent_connection:Disconnect()
+                            end
+                        end)
                         --
                         local colorpicker_title = utility:Create("TextLabel", {Vector2.new(4,2), colorpicker_open_frame}, {
                             Text = cpinfo,
@@ -3426,7 +3855,7 @@ do
             end
         end
         --
-        library.changed[#library.changed + 1] = function()
+        library.changed[#library.changed + 1] = function(Input)
             if colorpicker.open and colorpicker.holding.picker or colorpicker.holding.huepicker or colorpicker.holding.transparency then
                 if window.isVisible then
                     colorpicker:Refresh()
@@ -3440,6 +3869,14 @@ do
                     if colorpicker.holding.transparency then
                         colorpicker.holding.transparency = not colorpicker.holding.transparency
                     end
+                end
+            end
+            if Input.UserInputType == Enum.UserInputType.MouseMovement and colorpicker_outline.Visible and window.isVisible then
+                if utility:MouseOverDrawing({section.section_frame.Position.X, section.section_frame.Position.Y + colorpicker.axis, section.section_frame.Position.X + section.section_frame.Size.X - (colorpicker.secondColorpicker and (30+4) or 0), section.section_frame.Position.Y + colorpicker.axis + 15}) and not window:IsOverContent() then
+                    local h, s, v = theme.accent:ToHSV()
+                    colorpicker_inline.Color = Color3.fromHSV(h, 0.44, v)
+                else
+                    colorpicker_inline.Color = theme.inline
                 end
             end
         end
@@ -3512,10 +3949,18 @@ do
             --
             function colorpicker:Set(color, transp_val)
                 if typeof(color) == "table" then
-                    colorpicker.current = color
-                    colorpicker_frame.Color = Color3.fromHSV(colorpicker.current[1], colorpicker.current[2], colorpicker.current[3])
-                    colorpicker_frame.Transparency = 1 - colorpicker.current[4]
-                    callback(Color3.fromHSV(colorpicker.current[1], colorpicker.current[2], colorpicker.current[3]), colorpicker.current[4])
+                    if color.Color and color.Transparency then
+                        local h, s, v = table.unpack(color.Color)
+                        colorpicker.current = {h, s, v , color.Transparency}
+                        colorpicker_frame.Color = Color3.fromHSV(colorpicker.current[1], colorpicker.current[2], colorpicker.current[3])
+                        colorpicker_frame.Transparency = 1 - colorpicker.current[4]
+                        callback(Color3.fromHSV(colorpicker.current[1], colorpicker.current[2], colorpicker.current[3]), colorpicker.current[4])
+                    else
+                        colorpicker.current = color
+                        colorpicker_frame.Color = Color3.fromHSV(colorpicker.current[1], colorpicker.current[2], colorpicker.current[3])
+                        colorpicker_frame.Transparency = 1 - colorpicker.current[4]
+                        callback(Color3.fromHSV(colorpicker.current[1], colorpicker.current[2], colorpicker.current[3]), colorpicker.current[4])
+                    end
                 elseif typeof(color) == "color3" then
                     local h, s, v = color:ToHSV()
                     colorpicker.current = {h, s, v, (transp_val or 0)}
@@ -3577,7 +4022,7 @@ do
             end
             --
             function colorpicker:Get()
-                return Color3.fromHSV(colorpicker.current[1], colorpicker.current[2], colorpicker.current[3])
+                return {Color = Color3.fromHSV(colorpicker.current[1], colorpicker.current[2], colorpicker.current[3]), Transparency = colorpicker.current[4]}
             end
             --
             library.began[#library.began + 1] = function(Input)
@@ -3803,7 +4248,7 @@ do
                 end
             end
             --
-            library.changed[#library.changed + 1] = function()
+            library.changed[#library.changed + 1] = function(Input)
                 if colorpicker.open and colorpicker.holding.picker or colorpicker.holding.huepicker or colorpicker.holding.transparency then
                     if window.isVisible then
                         colorpicker:Refresh()
@@ -3819,6 +4264,14 @@ do
                         end
                     end
                 end
+                if Input.UserInputType == Enum.UserInputType.MouseMovement and colorpicker_outline.Visible and window.isVisible then
+                    if utility:MouseOverDrawing({section.section_frame.Position.X, section.section_frame.Position.Y + colorpicker.axis, section.section_frame.Position.X + section.section_frame.Size.X - (colorpicker.secondColorpicker and (30+4) or 0), section.section_frame.Position.Y + colorpicker.axis + 15}) and not window:IsOverContent() then
+                        local h, s, v = theme.accent:ToHSV()
+                        colorpicker_inline.Color = Color3.fromHSV(h, 0.44, v)
+                    else
+                        colorpicker_inline.Color = theme.inline
+                    end
+                end
             end
             --
             if pointer and tostring(pointer) ~= "" and tostring(pointer) ~= " " and not library.pointers[tostring(pointer)] then
@@ -3831,14 +4284,19 @@ do
         return colorpicker
     end
     --
-    function sections:ConfigBox(info)
+    function sections:Box(info)
         local info = info or {}
         --
         local window = self.window
         local page = self.page
         local section = self
+        local pointer = info.Pointer or info.pointer
+        local getOptions = info.getOptions or function() return {"1", "2", "3"} end
+        local callback = info.callback or info.callBack or info.Callback or info.CallBack or function()end
+        local autoRefresh = info.autorefresh or info.autoRefresh or info.Autorefresh or info.AutoRefresh or false
+        local refreshDelay = info.refreshdelay or info.refreshDelay or info.Refreshdelay or info.RefreshDelay or 5
         --
-        local configLoader = {axis = section.currentAxis, current = 1, buttons = {}}
+        local configLoader = {axis = section.currentAxis, current = 1, scrollMin = 0, scrollMax = 7, buttons = {}}
         --
         local configLoader_outline = utility:Create("Frame", {Vector2.new(4,configLoader.axis), section.section_frame}, {
             Size = utility:Size(1, -8, 0, 148, section.section_frame),
@@ -3868,9 +4326,9 @@ do
             Visible = page.open
         }, section.visibleContent)
         --
-        for i=1, 8 do
+        for i, v in next, getOptions() do
             local config_title = utility:Create("TextLabel", {Vector2.new(configLoader_frame.Size.X/2,2 + (18 * (i-1))), configLoader_frame}, {
-                Text = "Config-Slot: "..tostring(i),
+                Text = tostring(v),
                 Size = theme.textsize,
                 Font = theme.font,
                 Color = i == 1 and theme.accent or theme.textcolor,
@@ -3881,152 +4339,127 @@ do
             }, section.visibleContent)
             --
             configLoader.buttons[i] = config_title
+            --
+            if i > 8 then
+                config_title.Visible = false
+            end
         end
         --
         utility:LoadImage(configLoader_gradient, "gradient", "https://i.imgur.com/5hmlrjX.png")
         --
         function configLoader:Refresh()
+            for _, button in next, configLoader.buttons do
+                button:Remove()
+            end
+            --
+            configLoader.buttons = {}
+            --
+            for i, v in next, getOptions() do
+                local config_title = utility:Create("TextLabel", {Vector2.new(configLoader_frame.Size.X/2,2 + (18 * (i-1))), configLoader_frame}, {
+                    Text = tostring(v),
+                    Size = theme.textsize,
+                    Font = theme.font,
+                    Color = theme.textcolor,
+                    OutlineColor = theme.textborder,
+                    Center = true,
+                    Position = utility:Position(0.5, 0, 0, 2 + (18 * (i-1)), configLoader_frame),
+                    Visible = page.open and window.isVisible
+                }, section.visibleContent)
+                --
+                configLoader.buttons[i] = config_title
+                --
+                if i > 8 then
+                    config_title.Visible = page.open and window.isVisible and false
+                end
+            end
+            --
+            for i, v in next, configLoader.buttons do
+                if v.Text == configLoader.current then
+                    v.Color = theme.accent
+                    return
+                end
+            end
+            --
+            library.current = 1
+            --
+            configLoader:Update()
+        end
+        --
+        function configLoader:Update()
             for i,v in pairs(configLoader.buttons) do
                 v.Color = i == configLoader.current and theme.accent or theme.textcolor
+                v.Visible = page.open and window.isVisible and i > configLoader.scrollMin and i <= configLoader.scrollMax + 1 and true or false
+                if v.Visible then
+                    v.Position = utility:Position(0.5, 0, 0, 2 + (18 * (i-configLoader.scrollMin-1)), configLoader_frame)
+                end
             end
         end
         --
         function configLoader:Get()
-            return configLoader.current
+            for i, v in next, configLoader.buttons do
+                if i == configLoader.current then
+                    return v.Text
+                end
+            end
         end
         --
         function configLoader:Set(current)
-            configLoader.current = current
-            configLoader:Refresh()
+            for i, v in next, library.buttons do
+                if v.Text == current then
+                    configLoader.current = i
+                end
+            end
+            configLoader:Update()
+        end
+        --
+        local oldShow = section.page.Show
+        function section.page:Show()
+            oldShow()
+            configLoader:Update()
         end
         --
         library.began[#library.began + 1] = function(Input)
             if Input.UserInputType == Enum.UserInputType.MouseButton1 and configLoader_outline.Visible and window.isVisible and utility:MouseOverDrawing({section.section_frame.Position.X, section.section_frame.Position.Y + configLoader.axis, section.section_frame.Position.X + section.section_frame.Size.X, section.section_frame.Position.Y + configLoader.axis + 148}) and not window:IsOverContent() then
-                for i=1, 8 do
+                for i = 1, 8 do
                     if utility:MouseOverDrawing({section.section_frame.Position.X, section.section_frame.Position.Y + configLoader.axis + 2 + (18 * (i-1)), section.section_frame.Position.X + section.section_frame.Size.X, section.section_frame.Position.Y + configLoader.axis + 2 + (18 * (i-1)) + 18}) then
-                        configLoader.current = i
-                        configLoader:Refresh()
+                        configLoader.current = configLoader.scrollMin + i
+                        configLoader:Update()
                     end
                 end
             end
         end
         --
-        window.pointers["configbox"] = configLoader
+        library.changed[#library.changed + 1] = function(Input)
+            if Input.UserInputType == Enum.UserInputType.MouseWheel and configLoader_outline.Visible and window.isVisible and utility:MouseOverDrawing({section.section_frame.Position.X, section.section_frame.Position.Y + configLoader.axis, section.section_frame.Position.X + section.section_frame.Size.X, section.section_frame.Position.Y + configLoader.axis + 148}) and not window:IsOverContent() then
+                local direction = Input.Position.Z > 0 and "up" or "down"
+                if direction == "up" then
+                    local min = configLoader.scrollMin
+                    configLoader.scrollMin = min > 0 and configLoader.scrollMin - 1 or configLoader.scrollMin
+                    configLoader.scrollMax = min > 0 and configLoader.scrollMax - 1 or configLoader.scrollMax
+                else
+                    local max = configLoader.scrollMax
+                    configLoader.scrollMax = max < #configLoader.buttons - 1 and configLoader.scrollMax + 1 or configLoader.scrollMax
+                    configLoader.scrollMin = max < #configLoader.buttons - 1 and configLoader.scrollMin + 1 or configLoader.scrollMin
+                end
+                configLoader:Update()
+            end
+        end
+        --
+        if autoRefresh then
+            local function refreshFunction()
+                configLoader:Refresh()
+                delay(refreshDelay, refreshFunction)
+            end
+            delay(refreshDelay, refreshFunction)
+        end
+        --
+        if pointer ~= nil and pointer ~= "" and pointer ~= " " then
+            window.pointers[tostring(pointer)] = configLoader
+        end
         section.currentAxis = section.currentAxis + 148 + 4
         section:Update()
         --
         return configLoader
     end
 end
--- // Init
---[[do
-    local title_string = "Splix - Private | %A, %B"
-    local day = os.date(" %d", os.time())
-    local second_string = ", %Y."
-    title_string = os.date(title_string, os.time())..day..utility:GetSubPrefix(day)..os.date(second_string, os.time())
-    --
-    local lib = library:New({name = title_string})
-    --
-    local aimbot = lib:Page({name = "Aimbot"})
-    local visuals = lib:Page({name = "Visuals"})
-    local exploits = lib:Page({name = "Exploits"})
-    local misc = lib:Page({name = "Miscellaneous"})
-    --
-    local aimbot_main = aimbot:Section({name = "Main"})
-    local aimbot_br = aimbot:Section({name = "Bullet Redirection",side = "right"})
-    local aimbot_m, aimbot_mi, aimbot_s = aimbot:MultiSection({sections = {"Main", "Misc", "Settings"}, side = "left"})
-    --
-    local visuals_team, visuals_enemies, visuals_allies = visuals:MultiSection({sections = {"Team", "Enemies", "Allies"}, side = "left"})
-    local visuals_player = visuals:Section({name = "Players"})
-    local visuals_miscellaneous = visuals:Section({name = "Miscellaneous",side = "right"})
-    --
-    local exploits_main = exploits:Section({name = "Main"})
-    local exploits_skin = exploits:Section({name = "Skin Changer",side = "right"})
-    local exploits_freeze = exploits:Section({name = "Freeze Players"})
-    --
-    local misc_main = misc:Section({name = "Main"})
-    local misc_adj = misc:Section({name = "Adjustments",side = "right"})
-    --
-    local asd = aimbot_m:Toggle({name = "Aimbot Toggle", def = true, pointer = "aimbot_toggle"})
-    asd:Colorpicker({info = "Aimbot FOV Color", def = Color3.fromRGB(0,255,150), transparency = 0.5})
-    asd:Colorpicker({info = "Aimbot Outline FOV Color", def = Color3.fromRGB(45,45,45), transparency = 0.25})
-    aimbot_s:Label({name = "Some of the features\nhere, May be unsafe.\nUse with caution."})
-    aimbot_mi:Colorpicker({info = "Aimbot FOV Color", def = Color3.fromRGB(0,255,150), transparency = 0.5})
-    aimbot_mi:Multibox({name = "Aimbot Hitpart", min = 1, options = {"Head", "Torso", "Arms", "Legs"}, def = {"Head", "Torso"}})
-    aimbot_s:Dropdown({name = "Aimbot Hitpart", options = {"Head", "Torso", "Arms", "Legs"}, def = "Head"})
-    --
-    aimbot_main:Label({name = "Some of the features\nhere, May be unsafe.\nUse with caution."})
-    local aimbot_toggle = aimbot_main:Toggle({name = "Aimbot Toggle", def = true, pointer = "aimbot_toggle"})
-    aimbot_toggle:Colorpicker({info = "Aimbot FOV Color", def = Color3.fromRGB(0,255,150), transparency = 0.5})
-    aimbot_toggle:Colorpicker({info = "Aimbot Outline FOV Color", def = Color3.fromRGB(45,45,45), transparency = 0.25})
-    aimbot_main:Colorpicker({name = "Locking Color", info = "Aimbot Locked Player Color", def = Color3.fromRGB(205,50,50)}):Colorpicker({info = "Aimbot Outline FOV Color", def = Color3.fromRGB(45,45,45), transparency = 0.25})
-    aimbot_main:Toggle({name = "Aimbot Visible", def = true})
-    aimbot_main:Slider({name = "Watermark X Offset", min = 0, max = utility:GetScreenSize().X, def = 100, decimals = 1, callback = function(value)
-        if lib.watermark and lib.watermark.outline then
-            lib.watermark:Update("Offset", Vector2.new(value, lib.watermark.outline.Position.Y))
-        end
-    end})
-    aimbot_main:Slider({name = "Watermark Y Offset", min = 0, max = utility:GetScreenSize().Y, def = 38/2-10, decimals = 1, callback = function(value)
-        if lib.watermark and lib.watermark.outline then
-            lib.watermark:Update("Offset", Vector2.new(lib.watermark.outline.Position.X, value))
-        end
-    end})
-    aimbot_main:Slider({name = "Aimbot Field Of View", min = 0, max = 1000, def = 125, suffix = "°"})
-    aimbot_main:Toggle({name = "Aimbot Toggle", def = true, pointer = "aimbot_toggle"}):Keybind({callback = function(input, active) print(active) end})
-    aimbot_main:Keybind({name = "Aimbot Keybind", mode = "Toggle", callback = function(input, active) print(active) end})
-    aimbot_main:Keybind({name = "Aimbot Keybind", mode = "Hold", callback = function(input, active) print(active) end})
-    aimbot_main:Multibox({name = "Aimbot Hitpart", min = 1, options = {"Head", "Torso", "Arms", "Legs"}, def = {"Head", "Torso"}})
-    aimbot_main:Dropdown({name = "Aimbot Hitpart", options = {"Head", "Torso", "Arms", "Legs"}, def = "Head"})
-    --
-    aimbot_br:Toggle({name = "Bullet Redirection Toggle", def = true})
-    aimbot_br:Slider({name = "B.R. Hitchance", min = 0, max = 100, def = 65, suffix = "%"})
-    aimbot_br:Slider({name = "B.R. Accuracy", min = 0, max = 100, def = 90, suffix = "%"})
-    --
-    visuals_team:Toggle({name = "Draw Boxes", def = true})
-    visuals_team:Toggle({name = "Draw Names", def = true})
-    visuals_team:Toggle({name = "Draw Health", def = true})
-    --
-    visuals_enemies:Toggle({name = "Draw Boxes", def = true})
-    visuals_enemies:Toggle({name = "Draw Names", def = true})
-    visuals_enemies:Toggle({name = "Draw Health", def = true})
-    --
-    visuals_allies:Toggle({name = "Draw Boxes", def = true})
-    visuals_allies:Toggle({name = "Draw Names", def = true})
-    visuals_allies:Toggle({name = "Draw Health", def = true})
-
-    --
-    visuals_miscellaneous:Toggle({name = "Draw Field Of View"})
-    visuals_miscellaneous:Toggle({name = "Draw Server Position"})
-    --
-    exploits_main:Toggle({name = "God Mode"})
-    exploits_main:Toggle({name = "Bypass Suppresion"})
-    exploits_main:Toggle({name = "Bypass Fall"})
-    exploits_main:Button({name = "Stress Server"})
-    exploits_main:Button({name = "Crash Server"})
-    --
-    exploits_freeze:Toggle({name = "Freeze Toggle"})
-    exploits_freeze:Toggle({name = "Freeze On Shoot"})
-    exploits_freeze:Slider({name = "Freeze Interval", min = 1, max = 3000, def = 1000, suffix = "ms"})
-    --
-    exploits_skin:Toggle({name = "Custom Skin"})
-    exploits_skin:Slider({name = "Skin Offset Vertical", min = 0, max = 4, def = 1, decimals = 0.01})
-    exploits_skin:Slider({name = "Skin Offset Horizontal", min = 0, max = 4, def = 1, decimals = 0.01})
-    exploits_skin:Slider({name = "Skin Studs Vertical", min = 0, max = 4, def = 1, decimals = 0.01})
-    exploits_skin:Slider({name = "Skin Studs Horizontal", min = 0, max = 4, def = 1, decimals = 0.01})
-    --
-    misc_main:Toggle({name = "Fly"})
-    misc_main:Toggle({name = "Auto Spot", def = true})
-    misc_main:Toggle({name = "Hit Logs", def = true})
-    misc_main:Toggle({name = "Chat Spam"})
-    misc_main:Toggle({name = "Auto Vote"})
-    misc_main:Dropdown({name = "Auto Vote Options", options = {"Yes", "No"}, def = "Yes"})
-    --
-    misc_adj:Toggle({name = "Walk Speed"})
-    misc_adj:Toggle({name = "Jump Height"})
-    misc_adj:Slider({name = "Walk Speed", min = 16, max = 200, def = 16})
-    misc_adj:Slider({name = "Jump Height", min = 50, max = 400, def = 50})
-    --
-    lib:Initialize()
-end]]
---
-return library, utility, library.pointers, theme
+return library
